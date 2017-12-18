@@ -1,21 +1,22 @@
 import csv
 import os
+from typing import Iterator, Tuple, Generator
 
 import tensorflow as tf
 import sys
 
 
-def files_gen(annotations_path: str):
+def files_gen(annotations_path: str) -> Generator[Tuple[str, int, int, int, int, str], None, None]:
     with open(annotations_path, 'rt') as csvfile:
-        spamreader = csv.reader(csvfile, delimiter=',')
+        spamreader = csv.reader(csvfile, delimiter=',')  # type: Iterator[Tuple[str, str, str, str, str, str]]
         for row in spamreader:
             relative_path = row[0]
             csv_base_path = os.path.dirname(annotations_path)
             image_path = os.path.abspath(os.path.join(csv_base_path, relative_path))
-            ret = (image_path,
+            ret = (image_path.encode('utf-8'),
                    int(row[1]), int(row[2]),  # upper left x,y
                    int(row[3]), int(row[4]),  # lower right x,y
-                   row[5])
+                   row[5].encode('utf-8'))
             print(ret)
             yield ret
 
@@ -50,7 +51,7 @@ def encode_and_save(image, filename):
     return tf.write_file(filename, encoded_jpg)
 
 
-def process(annotations_path, output_path):
+def process(annotations_path: str, output_path: str) -> None:
     # Create a dataset of filenames, bounding boxes, and string labels
     filenames = tf.data.Dataset.from_generator(
         lambda: files_gen(annotations_path),
