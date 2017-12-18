@@ -64,7 +64,7 @@ def simpons_csv_to_cropped_or_none(simpsons_csv):
 
 # Format: filepath,x1,y1,x2,y2,character 
 def read_csv(path):
-    with open(path, 'rb') as csvfile:
+    with open(path, 'rt') as csvfile:
         spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
         for row in spamreader:
             relative_path = row[0]
@@ -86,7 +86,7 @@ if __name__ == "__main__":
             csv_entries += [entry]
             label_strings += [entry.label]
         else:
-            print csv_entry
+            print(csv_entry)
     labels = sort_and_uniq_labels(label_strings)
     total_labels=len(labels)
     for e in csv_entries:
