@@ -76,13 +76,13 @@ if __name__ == "__main__":
         .map(deserialize_example, num_parallel_calls=8)\
         .repeat()\
         .shuffle(1000)\
-        .batch(1)\
+        .batch(1000)\
         .make_one_shot_iterator()  # type: tf.data.Iterator
 
     inputs_op, true_values_op = data_iter_test.get_next()
 
     # Test trained model
-    softmax_op = tf.nn.softmax(y)
+    softmax_op = tf.nn.softmax(y, 1)
     correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
     accuracy_op = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     inputs, true_values = sess.run([inputs_op, true_values_op])
