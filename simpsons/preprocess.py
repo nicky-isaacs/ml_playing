@@ -44,7 +44,7 @@ def read_crop_resize(path, x1, y1, x2, y2, label):
 
     # TODO Somewhere around here we need to turn the label into a 1-hot vec
 
-    return resized, label
+    return resized, label, path
 
 
 def encode_and_save(image, filename):
@@ -53,18 +53,19 @@ def encode_and_save(image, filename):
     return tf.write_file(filename, encoded_jpg)
 
 
-def serialize(image, label, one_hot):
+def serialize(image, label, one_hot, path):
     image_string = tf.serialize_tensor(image)
     one_hot_string = tf.serialize_tensor(one_hot)
 
-    return image_string, label, one_hot_string
+    return image_string, label, one_hot_string, path
 
-def make_example(image_string, label, one_hot_string):
+def make_example(image_string, label, one_hot_string, image_path):
     return tf.train.Example(
         features=tf.train.Features(feature={
             'image': tf.train.Feature(bytes_list=tf.train.BytesList(value=[image_string])),
             'label': tf.train.Feature(bytes_list=tf.train.BytesList(value=[label])),
             'one_hot': tf.train.Feature(bytes_list=tf.train.BytesList(value=[one_hot_string])),
+            'image_path': tf.train.Feature(bytes_list=tf.train.BytesList(value=[image_path])),
         })
     )
 
@@ -95,19 +96,21 @@ def process(annotations_path: str, output_train_path: str, output_test_path: str
     filenames = tf.data.Dataset.from_generator(
         lambda: (i for i in all_annotations),
         (tf.string,
-         tf.int32, tf.int32,
-         tf.int32, tf.int32,
+         tf.int32,
+         tf.int32,
+         tf.int32,
+         tf.int32,
          tf.string)
     )  # type: tf.data.Dataset
 
     # Read and crop them on EIGHT THREADS HECK YEAH
     image_iter = filenames \
         .map(read_crop_resize, num_parallel_calls=8) \
-        .map(lambda img_, label_: (img_, label_, make_one_hot(labels_list, label_)), num_parallel_calls=8) \
-        .map(serialize, num_parallel_calls=8)\
+        .map(lambda img_, label_, path_: (img_, label_, make_one_hot(labels_list, label_), path_), num_parallel_calls=8) \
+        .map(serialize, num_parallel_calls=8) \
         .make_one_shot_iterator()  # type: tf.data.Iterator
 
-    img_op, label_op, one_hot_op = image_iter.get_next()
+    img_op, label_op, one_hot_op, path_op = image_iter.get_next()
 
     bar = ProgressBar(len(all_annotations))
     with tf.Session() as sess:
@@ -118,8 +121,8 @@ def process(annotations_path: str, output_train_path: str, output_test_path: str
                 # This just writes the files back to disk.
                 # TODO: serialize the processed images to TF/numpy binary format and save those along with the labels
                 # op = encode_and_save(img, output_path + "/" + label + str(i) + ".jpg")
-                img, label, one_hot_ = sess.run([img_op, label_op, one_hot_op])
-                serialized = make_example(img, label, one_hot_).SerializeToString()
+                img, label, one_hot_, path = sess.run([img_op, label_op, one_hot_op, path_op])
+                serialized = make_example(img, label, one_hot_, path).SerializeToString()
                 if random.random() < 0.9:
                     writer_train.write(serialized)
                 else:
