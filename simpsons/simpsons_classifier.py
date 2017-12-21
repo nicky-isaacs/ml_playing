@@ -57,7 +57,7 @@ if __name__ == "__main__":
     # outputs of 'y', and then average across the batch.
     cross_entropy = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
-    train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
+    train_step = tf.train.GradientDescentOptimizer(0.01).minimize(cross_entropy)
 
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
@@ -76,14 +76,16 @@ if __name__ == "__main__":
         .map(deserialize_example, num_parallel_calls=8)\
         .repeat()\
         .shuffle(1000)\
-        .batch(1000)\
+        .batch(1)\
         .make_one_shot_iterator()  # type: tf.data.Iterator
 
-    inputs_op, true_values_op = data_iter.get_next()
+    inputs_op, true_values_op = data_iter_test.get_next()
 
     # Test trained model
+    softmax_op = tf.nn.softmax(y)
     correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
     accuracy_op = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     inputs, true_values = sess.run([inputs_op, true_values_op])
-    accuracy = sess.run(accuracy_op, feed_dict={x: inputs, y_: true_values})
+    accuracy, our_prediction = sess.run([accuracy_op, softmax_op], feed_dict={x: inputs, y_: true_values})
     print("\nTest accuracy: %f" % accuracy)
+    print(our_prediction)
