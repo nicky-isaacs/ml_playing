@@ -1,6 +1,7 @@
 import tensorflow as tf
 import sys
-
+from shutil import copyfile, rmtree
+import os
 from ProgressBar import ProgressBar
 
 IMAGE_HEIGHT_PIXELS = 300
@@ -26,13 +27,27 @@ def deserialize_example(example_bytes):
     parsed_label = parsed['label']
     parsed_path = parsed['image_path']
 
-    return tf.reshape(parsed_img_tensor, (TOTAL_PIXELS,)), tf.reshape(parsed_one_hot_tensor, (TOTAL_CLASSES,)), parsed_label, parsed_path 
-from shutil import import copyfile
+    return tf.reshape(parsed_img_tensor, (TOTAL_PIXELS,)), tf.reshape(parsed_one_hot_tensor, (TOTAL_CLASSES,)), parsed_label, parsed_path
 
+base_sort_dir = "/tmp/predictions"
 def put_in_predicted_location(location, from_file):
-    copyfile(f,     
+    location = os.path.join(base_sort_dir, location)
+    try:
+        os.mkdir(location)
+    except FileExistsError:
+        pass
+
+    filename = os.path.basename(from_file)
+    copyfile(from_file, os.path.join(location, filename))
 
 if __name__ == "__main__":
+    try:
+        rmtree(base_sort_dir)
+        os.mkdir(base_sort_dir)
+    except Exception:
+        os.mkdir(base_sort_dir)
+
+
     dataset = tf.data.TFRecordDataset(sys.argv[1])
 
     data_iter = dataset\
@@ -72,7 +87,7 @@ if __name__ == "__main__":
     steps = 1000
     bar = ProgressBar(steps)
     for _ in range(steps):
-        inputs, true_values, label = sess.run([inputs_op, true_values_op])
+        inputs, true_values, label = sess.run([inputs_op, true_values_op, label_op])
         sess.run(train_step, feed_dict={x: inputs, y_: true_values})
         bar.incr()
         bar.display()
@@ -81,6 +96,7 @@ if __name__ == "__main__":
 
     data_iter_test = dataset_test\
         .map(deserialize_example, num_parallel_calls=8)\
+        .batch(1)\
         .make_one_shot_iterator()  # type: tf.data.Iterator
 
     inputs_op, true_values_op, label_op, path_op = data_iter_test.get_next()
@@ -93,7 +109,8 @@ if __name__ == "__main__":
             correct_prediction = tf.equal(predicted_position, tf.argmax(y_, 1))
             accuracy_op = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
             inputs, true_values, label, path = sess.run([inputs_op, true_values_op, label_op, path_op])
-            accuracy, our_prediction = sess.run([accuracy_op, softmax_op], feed_dict={x: inputs, y_: true_values})
+            accuracy, our_prediction, predicted_position, path = sess.run([accuracy_op, softmax_op, predicted_position, path_op], feed_dict={x: inputs, y_: true_values})
+            put_in_predicted_location(str(predicted_position[0]), path[0].decode('utf-8'))
             print("\nTest accuracy: %f" % accuracy)
             print(our_prediction)
         except tf.errors.OutOfRangeError:
