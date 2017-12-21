@@ -84,7 +84,7 @@ if __name__ == "__main__":
     sess = tf.InteractiveSession()
     tf.global_variables_initializer().run()
 
-    steps = 1000
+    steps = 10000
     bar = ProgressBar(steps)
     for _ in range(steps):
         inputs, true_values, label = sess.run([inputs_op, true_values_op, label_op])
@@ -112,6 +112,5 @@ if __name__ == "__main__":
             accuracy, our_prediction, predicted_position, path = sess.run([accuracy_op, softmax_op, predicted_position, path_op], feed_dict={x: inputs, y_: true_values})
             put_in_predicted_location(str(predicted_position[0]), path[0].decode('utf-8'))
             print("\nTest accuracy: %f" % accuracy)
-            print(our_prediction)
         except tf.errors.OutOfRangeError:
             break
