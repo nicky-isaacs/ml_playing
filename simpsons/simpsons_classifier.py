@@ -127,6 +127,7 @@ def variable_summaries(var):
     tf.summary.histogram('histogram', var)
 
 def setup_tensorboard(w, b, cross_entropy):
+    """Given the variables and tensors we care about, attach scoped metrics"""
     with tf.name_scope('w'):
         variable_summaries(w)
     with tf.name_scope('b'):
