@@ -156,18 +156,17 @@ def setup_tensorboard(w, b, cross_entropy):
 def create_test_dataset(flags: Flags):
     dataset_test = tf.data.TFRecordDataset(flags.test_data)
     return dataset_test \
+        .repeat() \
         .map(deserialize_example, num_parallel_calls=8) \
         .batch(1) \
         .make_one_shot_iterator()  # type: tf.data.Iterator
 
 
-def build_test_dataset(flags: Flags):
+def build_test_dataset(flags: Flags) -> tf.data.Dataset:
     dataset_test = tf.data.TFRecordDataset(flags.test_data)
     return dataset_test \
         .map(deserialize_example, num_parallel_calls=8) \
-        .batch(1) \
-        .make_one_shot_iterator()  # type: tf.data.Iterator
-
+        .batch(1)
 
 if __name__ == "__main__":
     flags = parse_flags()
@@ -224,20 +223,20 @@ if __name__ == "__main__":
     with tf.name_scope('training_accuracy'):
         variable_summaries(train_acc_report_var)
 
-    acc_report_test_data = create_test_dataset(flags)
-    acc_inputs_op, acc_true_values_op, label_op, path_op = acc_report_test_data.get_next()
+    acc_report_test_data = build_test_dataset(flags).repeat().make_one_shot_iterator()
+    acc_inputs_op, acc_true_values_op, _, _ = acc_report_test_data.get_next()
 
     def update_train_acc():
         predicted_position = tf.argmax(y, 1)
         correct_prediction = tf.equal(predicted_position, tf.argmax(y_, 1))
         acc_op = tf.reduce_mean(tf.reduce_mean(tf.cast(correct_prediction, tf.float32)))
         update_acc_op = train_acc_report_var.assign((acc_op + tf.convert_to_tensor(train_acc_report_var)) / tf.constant(2.0, tf.float32))
-        inputs, true_values = sess.run([inputs_op, true_values_op])
-        sess.run(update_acc_op, feed_dict={x: inputs, y_: true_values})
+        _inputs, _true_values = sess.run([acc_inputs_op, acc_true_values_op])
+        sess.run(update_acc_op, feed_dict={x: _inputs, y_: _true_values})
 
     tf.global_variables_initializer().run()
 
-    bar=ProgressBar(0)
+    bar=ProgressBar(flags.max_steps)
     merged = tf.summary.merge_all()
     for i in range(flags.max_steps):
         try:
@@ -251,11 +250,12 @@ if __name__ == "__main__":
         except tf.errors.OutOfRangeError:
             break
 
-    data_iter_test = build_test_dataset(flags)
+    data_iter_test = build_test_dataset(flags).make_one_shot_iterator()
 
     inputs_op, true_values_op, label_op, path_op = data_iter_test.get_next()
 
     # Test trained model
+    acc_sum=0.0
     while True:
         try:
             softmax_op = tf.nn.softmax(y, 1)
@@ -265,6 +265,7 @@ if __name__ == "__main__":
             inputs, true_values, label, path = sess.run([inputs_op, true_values_op, label_op, path_op])
             accuracy, our_prediction, predicted_position, path = sess.run([accuracy_op, softmax_op, predicted_position, path_op], feed_dict={x: inputs, y_: true_values})
             put_in_predicted_location(flags.prediction_output_base_dir, str(predicted_position[0]), path[0].decode('utf-8'))
-            print("\nTest accuracy: %f" % accuracy)
+            acc_sum = (acc_sum + accuracy)/2.0
         except tf.errors.OutOfRangeError:
             break
+    print("\nTest accuracy: %f" % acc_sum)
