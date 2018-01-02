@@ -1,4 +1,3 @@
-import argparse
 import os
 import numpy as np
 from shutil import copyfile, rmtree
@@ -6,97 +5,12 @@ from shutil import copyfile, rmtree
 import tensorflow as tf
 
 from ProgressBar import ProgressBar
+from flags import parse_flags, Flags
 
 IMAGE_HEIGHT_PIXELS = 300
 IMAGE_WIDTH_PIXELS = 200
 TOTAL_PIXELS = 300 * 200 * 3
 TOTAL_CLASSES = 18
-
-
-class Flags:
-
-    def __init__(self, prediction_output_base_dir: str, max_steps: int, training_data: str, test_data: str,
-                 learn_rate: float,
-                 logs_dir: str, tf_summary_interval: int,):
-        self.prediction_output_base_dir = prediction_output_base_dir
-        self.max_steps = max_steps
-        self.training_data = training_data
-        self.test_data = test_data,
-        self.learn_rate = learn_rate
-        self.logs_dir = logs_dir
-        self.tf_summary_interval = tf_summary_interval
-
-
-def parse_flags() -> Flags:
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('--max-steps',
-                        dest='steps',
-                        type=int,
-                        default=1,
-                        help="number of epochs to train (default 1)")
-
-    parser.add_argument('--prediction-dir',
-                        dest='prediction_output_base_dir',
-                        type=str,
-                        default='/tmp/predictions',
-                        help="location of the output predictions (default /tmp/predictions)")
-
-    parser.add_argument('--training-data',
-                        dest='training_data',
-                        type=str,
-                        help="location of the training data tfdata file")
-
-    parser.add_argument('--test-data',
-                        dest='test_data',
-                        type=str,
-                        help="location of the training data tfdata file")
-
-    parser.add_argument('--learn-rate',
-                        dest='learn_rate',
-                        type=float,
-                        default=0.001,
-                        help="location of the training data tfdata file")
-
-    parser.add_argument('--logs-dir',
-                        dest='logs_dir',
-                        type=str,
-                        default='/tmp/simpsons_logs',
-                        help='where to log tensorflow data (default /tmp/simpsons_logs)')
-
-    parser.add_argument('--summary-interval',
-                        dest='summary_interval',
-                        type=int,
-                        default=100,
-                        help='how many training steps between tensorboard metrics are posted (default 100)')
-
-    args = parser.parse_args()
-
-    all_args = [
-        args.prediction_output_base_dir,
-        args.steps,
-        args.training_data,
-        args.test_data,
-        args.logs_dir,
-        args.learn_rate,
-        args.summary_interval,
-    ]
-
-    # Ensure that all the flags are defined
-    for arg in all_args:
-        if None == arg:
-            parser.print_usage()
-            parser.error('Missing required arguments')
-
-    return Flags(
-        prediction_output_base_dir=args.prediction_output_base_dir,
-        max_steps=args.steps,
-        training_data=args.training_data,
-        test_data=args.test_data,
-        learn_rate=args.learn_rate,
-        logs_dir=args.logs_dir,
-        tf_summary_interval=args.summary_interval,
-    )
 
 
 def deserialize_example(example_bytes):
@@ -168,6 +82,7 @@ def build_test_dataset(flags: Flags) -> tf.data.Dataset:
         .map(deserialize_example, num_parallel_calls=8) \
         .batch(1)
 
+
 if __name__ == "__main__":
     flags = parse_flags()
     try:
@@ -181,7 +96,7 @@ if __name__ == "__main__":
     data_iter = dataset \
         .map(deserialize_example, num_parallel_calls=8) \
         .repeat() \
-        .shuffle(1000) \
+        .shuffle(10000) \
         .batch(10) \
         .make_one_shot_iterator()  # type: tf.data.Iterator
 
@@ -216,56 +131,74 @@ if __name__ == "__main__":
     sess = tf.InteractiveSession()
     train_writer = tf.summary.FileWriter(flags.logs_dir + '/train',
                                          sess.graph)
-    test_writer = tf.summary.FileWriter(flags.logs_dir + '/test')
 
     train_acc_report_var = tf.Variable(initial_value=0.0, dtype=tf.float32)
+    test_acc_report_var = tf.Variable(initial_value=0.0, dtype=tf.float32)
 
-    with tf.name_scope('training_accuracy'):
+    with tf.name_scope('train_accuracy'):
         variable_summaries(train_acc_report_var)
 
-    acc_report_test_data = build_test_dataset(flags).repeat().make_one_shot_iterator()
+    with tf.name_scope('test_accuracy'):
+        variable_summaries(test_acc_report_var)
+
+    acc_report_test_data = build_test_dataset(flags).batch(10).repeat().make_one_shot_iterator()
     acc_inputs_op, acc_true_values_op, _, _ = acc_report_test_data.get_next()
 
+
     def update_train_acc():
-        predicted_position = tf.argmax(y, 1)
-        correct_prediction = tf.equal(predicted_position, tf.argmax(y_, 1))
-        acc_op = tf.reduce_mean(tf.reduce_mean(tf.cast(correct_prediction, tf.float32)))
-        update_acc_op = train_acc_report_var.assign((acc_op + tf.convert_to_tensor(train_acc_report_var)) / tf.constant(2.0, tf.float32))
+        _predicted_position = tf.argmax(y, 1)
+        _correct_prediction = tf.equal(_predicted_position, tf.argmax(y_, 1))
+        acc_op = tf.reduce_mean(tf.reduce_mean(tf.cast(_correct_prediction, tf.float32)))
+        update_acc_op = train_acc_report_var.assign(
+            (acc_op + tf.convert_to_tensor(train_acc_report_var)) / tf.constant(2.0, tf.float32))
         _inputs, _true_values = sess.run([acc_inputs_op, acc_true_values_op])
         sess.run(update_acc_op, feed_dict={x: _inputs, y_: _true_values})
 
+
+    def update_test_acc(_inputs, _true_values):
+        _predicted_position = tf.argmax(y, 1)
+        _correct_prediction = tf.equal(_predicted_position, tf.argmax(y_, 1))
+        acc_op = tf.reduce_mean(tf.reduce_mean(tf.cast(_correct_prediction, tf.float32)))
+        update_acc_op = test_acc_report_var.assign(
+            (acc_op + tf.convert_to_tensor(train_acc_report_var)) / tf.constant(2.0, tf.float32))
+        new_acc = sess.run(update_acc_op, feed_dict={x: _inputs, y_: _true_values})
+        print("\nTest accuracy: %f" % new_acc)
+
+
     tf.global_variables_initializer().run()
 
-    bar=ProgressBar(flags.max_steps)
+    bar = ProgressBar(flags.max_steps)
     merged = tf.summary.merge_all()
     for i in range(flags.max_steps):
         try:
             inputs, true_values, label = sess.run([inputs_op, true_values_op, label_op])
-            summary, _ = sess.run([merged,train_step], feed_dict={x: inputs, y_: true_values})
-            if i%flags.tf_summary_interval is 0:
-                train_writer.add_summary(summary, i)
-                update_train_acc()
-            bar.incr()
-            bar.display()
         except tf.errors.OutOfRangeError:
             break
+        summary, _ = sess.run([merged, train_step], feed_dict={x: inputs, y_: true_values})
+        if i % flags.tf_summary_interval is 0:
+            update_train_acc()
+            update_test_acc(inputs, true_values)
+            train_writer.add_summary(summary, i)
+        bar.incr()
+        bar.display()
 
     data_iter_test = build_test_dataset(flags).make_one_shot_iterator()
 
     inputs_op, true_values_op, label_op, path_op = data_iter_test.get_next()
 
     # Test trained model
-    acc_sum=0.0
+    acc_sum = 0.0
     while True:
         try:
-            softmax_op = tf.nn.softmax(y, 1)
             predicted_position = tf.argmax(y, 1)
             correct_prediction = tf.equal(predicted_position, tf.argmax(y_, 1))
             accuracy_op = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
             inputs, true_values, label, path = sess.run([inputs_op, true_values_op, label_op, path_op])
-            accuracy, our_prediction, predicted_position, path = sess.run([accuracy_op, softmax_op, predicted_position, path_op], feed_dict={x: inputs, y_: true_values})
-            put_in_predicted_location(flags.prediction_output_base_dir, str(predicted_position[0]), path[0].decode('utf-8'))
-            acc_sum = (acc_sum + accuracy)/2.0
+            accuracy, predicted_position, path = sess.run([accuracy_op, predicted_position, path_op],
+                                                          feed_dict={x: inputs, y_: true_values})
+            put_in_predicted_location(flags.prediction_output_base_dir, str(predicted_position[0]),
+                                      path[0].decode('utf-8'))
+            acc_sum = (acc_sum + accuracy) / 2.0
         except tf.errors.OutOfRangeError:
             break
     print("\nTest accuracy: %f" % acc_sum)
