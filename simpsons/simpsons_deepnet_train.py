@@ -5,11 +5,12 @@ import preprocess
 from typing import List, Dict
 from flags import parse_flags
 from simpsons_deepnet_model import graph
-import numpy as np
+import random
 
 IMAGE_HEIGHT_PIXELS = 300
 IMAGE_WIDTH_PIXELS = 200
 
+model_dir = '/tmp/simpsons_model'
 
 def file_writer_hook(writer: tf.summary.FileWriter):
     scaffold = tf.train.Scaffold(
@@ -17,8 +18,8 @@ def file_writer_hook(writer: tf.summary.FileWriter):
     )
     return tf.train.SummarySaverHook(
         save_secs=3,
-        summary_writer=writer,
-        scaffold=scaffold
+        scaffold=scaffold,
+        output_dir=model_dir,
     )
 
 
@@ -53,6 +54,9 @@ if __name__ == "__main__":
         def build_annotations_dataset_with_int_label(annotations_path):
             all_annotations = list(preprocess.files_gen(annotations_path))
 
+            # Do not bias towards samples which are first in the file, as it is alphabetical
+            random.shuffle(all_annotations)
+
             # Create a dataset of filenames, bounding boxes, string, and int labels
             return tf.data.Dataset.from_generator(
                 lambda: ((path, x1, y1, x2, y2, label_dict[label]) for path, x1, y1, x2, y2, label in all_annotations),
@@ -73,35 +77,40 @@ if __name__ == "__main__":
 
         img_op, label_op = build_annotations_dataset_with_int_label(flags.annotations) \
             .map(read_crop_resize, num_parallel_calls=8) \
+            .batch(10) \
+            .repeat() \
             .make_one_shot_iterator() \
             .get_next()
 
         return img_op, label_op
 
 
-    train_writer = tf.summary.FileWriter('/tmp/simpsons_model')
 
-    hooks = [logging_hook, file_writer_hook(train_writer)]
+    hooks = [logging_hook]
 
     model_fn = graph(
-        1,
+        3,
         0.6,
         len(labels),
         flags.learn_rate,
         IMAGE_HEIGHT_PIXELS,
         IMAGE_WIDTH_PIXELS,
         3,
-        hooks
+        hooks,
+        model_dir,
+        flags.summary_interval
     )
-
 
     estimator = tf.estimator.Estimator(
         model_fn=model_fn,
-        model_dir="/tmp/simpsons_model",
-
+        model_dir=model_dir,
+        config=tf.estimator.RunConfig(
+            model_dir=model_dir,
+            save_summary_steps=1
+        )
     )
 
-
+    tf.logging.set_verbosity(tf.logging.DEBUG)
     estimator.train(
         input_fn=get,
         steps=flags.max_steps,

@@ -175,7 +175,7 @@ if __name__ == "__main__":
         except tf.errors.OutOfRangeError:
             break
         summary, _ = sess.run([merged, train_step], feed_dict={x: inputs, y_: true_values})
-        if i % flags.tf_summary_interval is 0:
+        if i % flags.summary_interval is 0:
             update_train_acc()
             update_test_acc(inputs, true_values)
             train_writer.add_summary(summary, i)

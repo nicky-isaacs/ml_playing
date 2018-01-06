@@ -1,18 +1,19 @@
 import argparse
 
+
 class Flags:
     def __init__(self, prediction_output_base_dir: str, max_steps: int, training_data: str, test_data: str,
                  learn_rate: float,
                  logs_dir: str,
-                 tf_summary_interval: int,
-                 annotations: int,):
+                 summary_interval: int,
+                 annotations: int, ):
         self.prediction_output_base_dir = prediction_output_base_dir
         self.max_steps = max_steps
         self.training_data = training_data
         self.test_data = test_data,
         self.learn_rate = learn_rate
         self.logs_dir = logs_dir
-        self.tf_summary_interval = tf_summary_interval
+        self.summary_interval = summary_interval
         self.annotations = annotations
 
 
@@ -90,6 +91,6 @@ def parse_flags() -> Flags:
         test_data=args.test_data,
         learn_rate=args.learn_rate,
         logs_dir=args.logs_dir,
-        tf_summary_interval=args.summary_interval,
+        summary_interval=args.summary_interval,
         annotations=args.annotations,
     )

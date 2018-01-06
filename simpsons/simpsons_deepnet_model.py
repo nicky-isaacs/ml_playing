@@ -46,6 +46,8 @@ def graph(
         img_width: int,
         img_channels: int,
         training_hooks: List[tf.train.SessionRunHook],
+        model_dir: str,
+        save_steps: int,
 ):
     """Intended to be used with tf.estimator.Estimator. Returns a function which adheres to the Estimator
     model_fn param (accepts: features, labels, mode, params, config)
@@ -113,16 +115,24 @@ def graph(
         # Calculate Loss (for both TRAIN and EVAL modes)
         onehot_labels =  tf.one_hot(indices=tf.cast(labels, tf.int32), depth=num_classes)
 
-        with tf.name_scope('loss'):
-            loss = tf.losses.softmax_cross_entropy(
-                onehot_labels=onehot_labels,
-                logits=logits)
+        loss = tf.losses.softmax_cross_entropy(
+            onehot_labels=onehot_labels,
+            logits=logits)
 
-        for var in tf.trainable_variables():
-            variable_summaries(var)
+        tf.summary.scalar("loss", loss)
+
+        _, accuracy = tf.metrics.accuracy(labels=labels, predictions=predictions["classes"])
+
+        tf.summary.scalar("accuracy", accuracy)
 
         # Configure the Training Op (for TRAIN mode)
         if mode == tf.estimator.ModeKeys.TRAIN:
+            saver_hook=tf.train.SummarySaverHook(
+                summary_op=tf.summary.merge_all(),
+                save_steps=save_steps,
+                output_dir=model_dir
+            )
+
             optimizer = tf.train.GradientDescentOptimizer(learning_rate=learn_rate)
             train_op = optimizer.minimize(
                 loss=loss,
@@ -131,7 +141,7 @@ def graph(
                 mode=mode,
                 loss=loss,
                 train_op=train_op,
-                training_hooks=training_hooks
+                training_hooks=training_hooks + [saver_hook]
             )
 
         # Add evaluation metrics (for EVAL mode)
