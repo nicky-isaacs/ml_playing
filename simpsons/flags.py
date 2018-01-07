@@ -1,12 +1,20 @@
 import argparse
-
+import tensorflow as tf
 
 class Flags:
-    def __init__(self, prediction_output_base_dir: str, max_steps: int, training_data: str, test_data: str,
+    def __init__(self,
+                 prediction_output_base_dir: str,
+                 max_steps: int,
+                 training_data: str,
+                 test_data: str,
                  learn_rate: float,
                  logs_dir: str,
                  summary_interval: int,
-                 annotations: int, ):
+                 annotations: int,
+                 mode: str,
+                 test_set: str,
+                 enable_gpu: bool,
+                 ):
         self.prediction_output_base_dir = prediction_output_base_dir
         self.max_steps = max_steps
         self.training_data = training_data
@@ -15,6 +23,9 @@ class Flags:
         self.logs_dir = logs_dir
         self.summary_interval = summary_interval
         self.annotations = annotations
+        self.mode = mode
+        self.test_set = test_set
+        self.enable_gpu = enable_gpu
 
 
 def parse_flags() -> Flags:
@@ -65,6 +76,24 @@ def parse_flags() -> Flags:
                         type=str,
                         help='path to the annotations file')
 
+    parser.add_argument('--mode',
+                        dest='mode',
+                        type=str,
+                        default=tf.estimator.ModeKeys.TRAIN,
+                        help='tensorflow mode: train, eval, infer (default: train)')
+
+    parser.add_argument('--test-set',
+                        dest='test_set',
+                        type=str,
+                        default='',
+                        help='full path to the test set directory')
+
+    parser.add_argument('--enable-gpu',
+                        dest='enable_gpu',
+                        type=bool,
+                        default=False,
+                        help='enable GPU support (default: False')
+
     args = parser.parse_args()
 
     all_args = [
@@ -76,6 +105,9 @@ def parse_flags() -> Flags:
         args.learn_rate,
         args.summary_interval,
         args.annotations,
+        args.mode,
+        args.test_set,
+        args.enable_gpu
     ]
 
     # Ensure that all the flags are defined
@@ -93,4 +125,7 @@ def parse_flags() -> Flags:
         logs_dir=args.logs_dir,
         summary_interval=args.summary_interval,
         annotations=args.annotations,
+        mode=args.mode,
+        test_set=args.test_set,
+        enable_gpu=args.enable_gpu,
     )

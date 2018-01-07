@@ -2,6 +2,7 @@ from typing import List
 
 import tensorflow as tf
 
+
 def variable_summaries(var: tf.Variable):
     """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
     with tf.name_scope('summaries'):
@@ -13,6 +14,7 @@ def variable_summaries(var: tf.Variable):
         tf.summary.scalar('max', tf.reduce_max(var))
         tf.summary.scalar('min', tf.reduce_min(var))
         tf.summary.histogram('histogram', var)
+
 
 def conv_layer(
         input: tf.Tensor,
@@ -37,6 +39,7 @@ def pooling_layer(
         pool_size=pool_size,
         strides=strides)
 
+
 def graph(
         layers: int,
         dropout_rate: float,
@@ -48,6 +51,7 @@ def graph(
         training_hooks: List[tf.train.SessionRunHook],
         model_dir: str,
         save_steps: int,
+        device: str,
 ):
     """Intended to be used with tf.estimator.Estimator. Returns a function which adheres to the Estimator
     model_fn param (accepts: features, labels, mode, params, config)
@@ -59,6 +63,10 @@ def graph(
     :param img_height:
     :param img_width:
     :param img_channels:
+    :param training_hooks
+    :param model_dir
+    :param save_steps
+    :param device
     :return: A model fn
     """
 
@@ -67,28 +75,31 @@ def graph(
             labels,
             mode,
             params,
-            config,):
+            config,
+    ):
+
         # Input Layer
         # Reshape X to 4-D tensor: [batch_size, width, height, channels]
-        input_layer: tf.Tensor = tf.reshape(features, [-1, img_width, img_height, img_channels])
+        with tf.device(device):
+            input_layer: tf.Tensor = tf.reshape(features, [-1, img_width, img_height, img_channels])
 
-        # For every layer, create a convolution with Nx10 + 10 filters (10, 20, 30, etc.) and a max pool
-        # of 2x2 with stride 2
-        for i in range(layers):
-            with tf.name_scope(f"layer_{i}"):
-                filters = (i * 10) + 10
-                conv = conv_layer(input_layer, filters, [5, 5])
-                input_layer = pooling_layer(conv, [2, 2], 2)
+            # For every layer, create a convolution with Nx10 + 10 filters (10, 20, 30, etc.) and a max pool
+            # of 2x2 with stride 2
+            for i in range(layers):
+                with tf.name_scope(f"layer_{i}"):
+                    filters = (i * 10) + 10
+                    with tf.device(device):
+                        conv = conv_layer(input_layer, filters, [5, 5])
+                        input_layer = pooling_layer(conv, [2, 2], 2)
 
+            flattened = tf.layers.flatten(input_layer)
 
-        flattened = tf.layers.flatten(input_layer)
-
-        # Dense Layer
-        # Densely connected layer with 1024 neurons
-        # Input Tensor Shape: [batch_size, 7 * 7 * 64]
-        # Output Tensor Shape: [batch_size, 1024]
-        with tf.name_scope("dense"):
-            dense = tf.layers.dense(inputs=flattened, units=1024, activation=tf.nn.relu)
+            # Dense Layer
+            # Densely connected layer with 1024 neurons
+            # Input Tensor Shape: [batch_size, 7 * 7 * 64]
+            # Output Tensor Shape: [batch_size, 1024]
+            with tf.name_scope("dense"):
+                dense = tf.layers.dense(inputs=flattened, units=1024, activation=tf.nn.relu)
 
         # Add dropout operation; 0.6 probability that element will be kept
         with tf.name_scope("dropout"):
@@ -113,7 +124,7 @@ def graph(
             return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
         # Calculate Loss (for both TRAIN and EVAL modes)
-        onehot_labels =  tf.one_hot(indices=tf.cast(labels, tf.int32), depth=num_classes)
+        onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=num_classes)
 
         loss = tf.losses.softmax_cross_entropy(
             onehot_labels=onehot_labels,
@@ -127,7 +138,7 @@ def graph(
 
         # Configure the Training Op (for TRAIN mode)
         if mode == tf.estimator.ModeKeys.TRAIN:
-            saver_hook=tf.train.SummarySaverHook(
+            saver_hook = tf.train.SummarySaverHook(
                 summary_op=tf.summary.merge_all(),
                 save_steps=save_steps,
                 output_dir=model_dir

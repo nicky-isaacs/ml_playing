@@ -5,6 +5,7 @@ from typing import Iterator, Tuple, Generator, List
 import tensorflow as tf
 import sys
 import random
+from PIL import Image
 
 from ProgressBar import ProgressBar
 
@@ -59,6 +60,7 @@ def serialize(image, label, one_hot, path):
 
     return image_string, label, one_hot_string, path
 
+
 def make_example(image_string, label, one_hot_string, image_path):
     return tf.train.Example(
         features=tf.train.Features(feature={
@@ -85,6 +87,31 @@ def all_labels(all_annotations: List[Tuple[str, int, int, int, int, str]]) -> Li
 def make_one_hot(all_labels: List[str], label: tf.Tensor):
     get_index_op = tf.py_func(all_labels.index, [label], tf.int64)
     return tf.one_hot(get_index_op, len(all_labels))
+
+
+def parse_test_set(dir) -> List[Tuple[str, str]]:
+    """
+    Parse the test directory to get file paths and labels.
+
+    :param dir: The full path to the test set
+    :return: a List[(path, label)] where path and label are str
+    """
+    output: List[(str, str)] = []
+    for e in os.listdir(dir):
+        if not e.startswith("."):
+            name, _ = os.path.splitext(e)
+            full_path = os.path.join(dir, e)
+
+            # Split on '_', remove the last element (the number) and rejoin
+            label = '_'.join(name.split('_')[:-1])
+            im = Image.open(full_path)
+            try:
+                im.verify()
+                output += [(full_path, label)]
+            except Exception:
+                continue
+
+    return output
 
 
 def process(annotations_path: str, output_train_path: str, output_test_path: str) -> None:
