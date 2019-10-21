@@ -17,7 +17,7 @@ requests==2.20.0
 six==1.11.0
 tensorflow==1.12.2
 tensorflow-tensorboard==0.4.0rc3
-urllib3==1.24.2
+urllib3==1.25.6
 virtualenv==15.1.0
 virtualenv-clone==0.2.6
 Werkzeug==0.15.3
